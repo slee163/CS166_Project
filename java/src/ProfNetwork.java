@@ -7,7 +7,15 @@
  * University of California - Riverside
  *
  * Target DBMS: 'Postgres'
+ * Donovan O'Connor
+ * docon001 
+ * 861016751
+ * 
+ * Spencer Lee 
+ * slee163
+ * 861008681
  *
+ * Group #52
  */
 
 
@@ -40,7 +48,7 @@ public class ProfNetwork {
                                 new InputStreamReader(System.in));
 
    /**
-    * Creates a new instance of Messenger
+    * Creates a new instance of ProfNetwork
     *
     * @param hostname the MySQL or PostgreSQL server hostname
     * @param database the name of the database
@@ -230,22 +238,22 @@ public class ProfNetwork {
          System.err.println (
             "Usage: " +
             "java [-classpath <classpath>] " +
-            Messenger.class.getName () +
+            ProfNetwork.class.getName () +
             " <dbname> <port> <user>");
          return;
       }//end if
 
       Greeting();
-      Messenger esql = null;
+      ProfNetwork esql = null;
       try{
          // use postgres JDBC driver.
          Class.forName ("org.postgresql.Driver").newInstance ();
-         // instantiate the Messenger object and creates a physical
+         // instantiate the ProfNetwork object and creates a physical
          // connection.
          String dbname = args[0];
          String dbport = args[1];
          String user = args[2];
-         esql = new Messenger (dbname, dbport, user, "");
+         esql = new ProfNetwork (dbname, dbport, user, "");
 
          boolean keepon = true;
          while(keepon) {
@@ -268,16 +276,20 @@ public class ProfNetwork {
                 System.out.println("MAIN MENU");
                 System.out.println("---------");
                 System.out.println("1. Goto Friend List");
-                System.out.println("2. Update Profile");
+                System.out.println("2. View and Update Profile");
                 System.out.println("3. Write a new message");
                 System.out.println("4. Send Friend Request");
+                System.out.println("5. View Messages");
+                System.out.println("6. Search People");
                 System.out.println(".........................");
                 System.out.println("9. Log out");
                 switch (readChoice()){
-                   case 1: FriendList(esql); break;
-                   case 2: UpdateProfile(esql); break;
-                   case 3: NewMessage(esql); break;
-                   case 4: SendRequest(esql); break;
+                   case 1: FriendList(esql, authorisedUser); break;
+                   case 2: UpdateProfile(esql, authorisedUser); break;
+                   case 3: NewMessage(esql, authorisedUser, null); break;
+                   case 4: SendRequest(esql, authorisedUser, null); break;
+                   case 5: ViewMessages(esql, authorisedUser); break;
+                   case 6: SearchPeople(esql, authorisedUser, null); break;
                    case 9: usermenu = false; break;
                    default : System.out.println("Unrecognized choice!"); break;
                 }
@@ -331,7 +343,7 @@ public class ProfNetwork {
     * Creates a new user with privided login, passowrd and phoneNum
     * An empty block and contact list would be generated and associated with a user
     **/
-   public static void CreateUser(Messenger esql){
+   public static void CreateUser(ProfNetwork esql){
       try{
          System.out.print("\tEnter user login: ");
          String login = in.readLine();
@@ -341,7 +353,7 @@ public class ProfNetwork {
          String email = in.readLine();
 
 	 //Creating empty contact\block lists for a user
-	 String query = String.format("INSERT INTO USR (userId, password, email, contact_list) VALUES ('%s','%s','%s')", login, password, email);
+	 String query = String.format("INSERT INTO USR (userId, password, email) VALUES ('%s','%s','%s')", login, password, email);
 
          esql.executeUpdate(query);
          System.out.println ("User successfully created!");
@@ -354,7 +366,7 @@ public class ProfNetwork {
     * Check log in credentials for an existing user
     * @return User login or null is the user does not exist
     **/
-   public static String LogIn(Messenger esql){
+   public static String LogIn(ProfNetwork esql){
       try{
          System.out.print("\tEnter user login: ");
          String login = in.readLine();
@@ -363,8 +375,9 @@ public class ProfNetwork {
 
          String query = String.format("SELECT * FROM USR WHERE userId = '%s' AND password = '%s'", login, password);
          int userNum = esql.executeQuery(query);
-	 if (userNum > 0)
-		return login;
+         if (userNum > 0)
+        	 return login;
+         System.out.println("\tInvalid Username or Password: ");
          return null;
       }catch(Exception e){
          System.err.println (e.getMessage ());
@@ -373,5 +386,673 @@ public class ProfNetwork {
    }//end
 
 // Rest of the functions definition go in here
+   public static void FriendList(ProfNetwork esql, String authorisedUser){
+	   try{
+		   boolean usermenu = true;
+	       while(usermenu) {
+	         System.out.println("Friends List");
+	         System.out.println("---------");
+	         System.out.println("1. View Friends");
+	         System.out.println("2. View Friend Requests");
+	         System.out.println("3. Send a Friend Request");
+	         System.out.println(".........................");
+	         System.out.println("9. Go Back");
+	         switch (readChoice()){
+	            case 1: ViewFriends(esql, authorisedUser); return;
+	            case 2: ViewFriendRequests(esql,authorisedUser); return;
+	            case 3: SendRequest(esql,authorisedUser, null); return;
+	            case 9: usermenu = false; break;
+	            default : System.out.println("Unrecognized choice!"); break;
+	         }
+	       }
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static String ViewFriends(ProfNetwork esql, String user){
+	   try{
+		   String query = String.format(
+				   "SELECT U.userId, U.email, U.name, U.dateOfBirth "
+				   + "FROM USR U, CONNECTION_USR C "
+				   + "WHERE C.userId = '%s' AND C.status = 'Accept' AND C.connectionId = U.userId "
+				   + "UNION "
+				   + "SELECT U.userId, U.email, U.name, U.dateOfBirth "
+				   + "FROM USR U, CONNECTION_USR C "
+				   + "WHERE C.connectionId = '%s' AND C.status = 'Accept' AND C.userId = U.userId", user, user);
+		   List<List<String>> userList = esql.executeQueryAndReturnResult(query);
+		   if(userList.isEmpty() == true){
+			   System.out.println("You have no friends.");
+			   return null;
+		   }
+		   PrintUser(userList, true, false);
+		   boolean usermenu = true;
+	       while(usermenu) {
+	         System.out.println("View Friends");
+	         System.out.println("---------");
+	         System.out.println("1. Goto Friend's Profile");
+	         System.out.println(".........................");
+	         System.out.println("9. Main Menu");
+	         switch (readChoice()){
+	            case 1: 
+	            	System.out.print("Enter Name of Friend: ");
+	            	String Username = in.readLine();
+	            	String searchRet = SearchPeople(esql, user, Username);
+	            	if(searchRet == null){
+	            		System.out.println("Invalid User");
+	            		break;
+	            	}
+	            	return user;
 
+	            case 9: usermenu = false; break;
+	            default : System.out.println("Unrecognized choice!"); break;
+	         }
+	       }
+		   return user;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return null;
+	   }
+   }
+   
+   public static void ViewFriendRequests(ProfNetwork esql, String authorisedUser){
+	   try{
+		   String query = String.format(
+				   "SELECT U.userId, U.email, U.name, U.dateOfBirth "
+				   + "FROM USR U, CONNECTION_USR C "
+				   + "WHERE C.connectionId = '%s' AND C.status = 'Request' AND C.userId = U.userId", authorisedUser);
+		   List<List<String>> userList = esql.executeQueryAndReturnResult(query);
+		   if(userList.isEmpty() == true){
+			   System.out.println("No Friend Requests");
+			   return;
+		   }
+		   PrintUser(userList, false, false);
+		   boolean usermenu = true;
+	       while(usermenu) {
+		         System.out.println("View Friend requests");
+		         System.out.println("---------");
+		         System.out.println("1. Accept A Friend Request");
+		         System.out.println("1. Reject A Friend Request");
+		         System.out.println(".........................");
+		         System.out.println("9. Main Menu");
+		         String request = "";
+		         switch (readChoice()){
+		            case 1: 
+		            	System.out.print("Enter Username of request to accept: ");
+		            	request = in.readLine();
+		            	query = String.format(
+		            			"UPDATE CONNECTION_USR "
+		            			+ "SET status = 'Accept' "
+		            			+ "WHERE userId = '%s' AND connectionId = '%s'", request, authorisedUser);
+		            	esql.executeUpdate(query);
+		            	System.out.println("Friend Request Accepted");
+		            	return;
+		            case 2: 
+		            	System.out.print("Enter Username of request to reject: ");
+		            	request = in.readLine();
+		            	query = String.format(
+		            			"UPDATE CONNECTION_USR "
+		            			+ "SET status = 'Reject' "
+		            			+ "WHERE userId = '%s' AND connectionId = '%s'", request, authorisedUser);
+		            	esql.executeUpdate(query);
+		            	System.out.println("Friend Request Rejected");
+		            	return;	
+		            case 9: usermenu = false; break;
+		            default : System.out.println("Unrecognized choice!"); break;
+		         }
+		       }
+		   return;
+	   }catch(Exception e){
+	         //System.err.println (e.getMessage ());
+	         System.out.println("Invalid Request, Returning to Main Menu");
+	         return;
+	   }
+   }
+   
+   public static void ViewSelf(ProfNetwork esql, String authorisedUser){
+	   try{
+	       String query = String.format("SELECT userId, email, name, dateOfBirth FROM USR WHERE userId = '%s'", authorisedUser);
+	       List<List<String>> Users = esql.executeQueryAndReturnResult(query);
+	       if (!Users.isEmpty()){
+	    	   PrintUser(Users, true, true);
+	    	   query = String.format("SELECT company, role, location, startDate, endDate "
+	    	   		+ "FROM WORK_EXPR WHERE userId = '%s'", authorisedUser);
+	    	   List<List<String>> WorkList = esql.executeQueryAndReturnResult(query);
+	    	   PrintWorkExp(WorkList);
+	    	   query = String.format("SELECT instituitionName, major, degree, startDate, endDate "
+	    	   		+ "FROM EDUCATIONAL_DETAILS WHERE userId = '%s'", authorisedUser);
+	    	   List<List<String>> EduList= esql.executeQueryAndReturnResult(query);
+	    	   PrintEduDet(EduList);
+	       }
+	   }catch(Exception e){
+		         System.err.println (e.getMessage());
+		         return;
+	   }
+   }
+   
+   public static void UpdateProfile(ProfNetwork esql, String authorisedUser){
+	   try{
+		   ViewSelf(esql, authorisedUser);
+		   boolean usermenu = true;
+		   
+	       while(usermenu) {
+	         System.out.println("Update Your Profile");
+	         System.out.println("---------");
+	         System.out.println("1. Change Password");
+	         System.out.println("2. Add Work Experience");
+	         System.out.println("3. Add Educational Detail");
+	         System.out.println(".........................");
+	         System.out.println("9. Go Back");
+	         switch (readChoice()){
+	            case 1: ChangePassword(esql, authorisedUser); break;
+	            case 2: AddWork(esql,authorisedUser); ViewSelf(esql, authorisedUser); break;
+	            case 3: AddEdu(esql,authorisedUser); ViewSelf(esql, authorisedUser); break;
+	            case 9: usermenu = false; break;
+	            default : System.out.println("Unrecognized choice!"); break;
+	         }
+	       }
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static void NewMessage(ProfNetwork esql, String authorisedUser, String target){
+	   try{
+		   System.out.println("Send New Message");
+		   System.out.println("---------");
+		   String username = target;
+		   if(username == null){
+			   System.out.print("Enter a recepiant's username: ");
+			   username = in.readLine();
+		   }
+		   System.out.print("Enter a message: ");
+		   String Contents = in.readLine();
+		   String query = String.format(
+				   "INSERT INTO MESSAGE (senderID, receiverID, contents, status) "
+				   + "VALUES ('%s','%s','%s', %s)", authorisedUser, username, Contents, "'Sent'");
+		   esql.executeUpdate(query);
+		   System.out.println("Messege Sent");
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static boolean CheckDepth(ProfNetwork esql, String authorisedUser, String username, String via1, String via2){
+	   try{
+		   String query = "";
+		   if(via1 == null && via2 == null){
+			   query = String.format(
+					   "SELECT C.userId, C.connectionId "
+					   + "FROM CONNECTION_USR C "
+					   + "WHERE C.userId = '%s' AND C.status = 'Accept'"
+					   + "UNION "
+					   + "SELECT C.userId, C.connectionId "
+					   + "FROM CONNECTION_USR C "
+					   + "WHERE C.connectionId = '%s' AND C.status = 'Accept'", authorisedUser, authorisedUser);
+			   List<List<String>> userList = esql.executeQueryAndReturnResult(query);
+			   if(userList.size() < 5)
+				   return true;
+			   for(int i = 0; i < userList.size(); i++) {
+				   if(userList.get(i).get(0) == authorisedUser){
+					   if(CheckDepth(esql,authorisedUser,username, userList.get(i).get(1), null))
+						   return true;
+				   }
+				   else{
+					   if(CheckDepth(esql,authorisedUser,username, userList.get(i).get(0), null))
+						   return true;
+				   }
+			   }
+			   return false;
+		   }
+		   String q1 = "";
+		   if(via2 == null)
+			   q1 = via1;
+		   else
+			   q1 = via2;
+		   
+		   query = String.format(
+				   "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.userId = '%s' AND C.status = 'Accept' AND C.connectionId = '%s'"
+				   + "UNION "
+				   + "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.connectionId = '%s' AND C.status = 'Accept' AND C.userId = '%s'", q1, username, q1, username);
+		   int rows = esql.executeQuery(query);
+		   if(rows > 0)
+			   return true;
+		   if(via2 == null){
+		   	   query = String.format(
+				   "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.userId = '%s' AND C.status = 'Accept' AND C.connectionId != '%s'"
+				   + "UNION "
+				   + "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.connectionId = '%s' AND C.status = 'Accept' AND C.userId != '%s'", q1, authorisedUser, q1, authorisedUser);
+			   List<List<String>>userList = esql.executeQueryAndReturnResult(query);
+		   	   for(int i = 0; i < userList.size(); i++) {
+				   if(userList.get(i).get(0) == authorisedUser){
+					   if(CheckDepth(esql,authorisedUser,username, via1, userList.get(i).get(1)))
+						   return true;
+				   }
+				   else{
+					   if(CheckDepth(esql,authorisedUser,username, via1, userList.get(i).get(0)))
+						   return true;
+				   }
+			   }   
+		   }
+		   else{
+			   /*
+		   	   query = String.format(
+				   "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.userId = '%s' AND C.status = 'Accept' AND C.connectionId != '%s' AND C.connectionId != '%s'"
+				   + "UNION "
+				   + "SELECT C.userId, C.connectionId "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE C.connectionId = '%s' AND C.status = 'Accept' AND C.userId != '%s' AND C.connectionId != '%s'", q1, authorisedUser, via1, q1, authorisedUser, via1);
+		   	   userList = esql.executeQueryAndReturnResult(query);*/
+			   return false;   
+		   }
+		   return false;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return false;
+	   }
+   }
+   
+   public static void SendRequest(ProfNetwork esql, String authorisedUser, String target){
+	   try{
+		   System.out.println("Search People");
+		   System.out.println("---------");
+		   String username = target;
+		   if(username == null){
+			   System.out.print("Enter a Username: ");
+			   username = in.readLine();
+		   }
+		   String query = String.format(
+				   "SELECT * "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE (C.userId = '%s' AND C.connectionId = '%s')", authorisedUser, username);
+		   int numRows = esql.executeQuery(query);
+		   if(numRows > 0){
+			   System.out.println("You already have a friend request for this user");
+			   return;
+		   }
+		   //If the target already has a pending friend request with the user
+		   //Insert the request into the table (a trigger will automatically approve the existing one isntead)
+		   query = String.format(
+				   "SELECT * "
+				   + "FROM CONNECTION_USR C "
+				   + "WHERE (C.userId = '%s' AND C.connectionId = '%s')", username, authorisedUser);
+		   numRows = esql.executeQuery(query);
+		   if(numRows > 0){
+			   query = String.format(
+					   "INSERT INTO CONNECTION_USR (userID, connectionID, status) "
+					   + "VALUES ('%s', '%s', 'Request')", authorisedUser, username );
+			   esql.executeUpdate(query);
+			   System.out.println("Friend Request Sent");
+			   return;
+			   
+		   }
+		   if(CheckDepth(esql, authorisedUser, username, null, null) == true){
+			   query = String.format(
+					   "INSERT INTO CONNECTION_USR (userID, connectionID, status) "
+					   + "VALUES ('%s', '%s', 'Request')", authorisedUser, username);
+			   esql.executeUpdate(query);
+			   System.out.println("Friend Request Sent");
+			   return;
+		   }
+		   else{
+			   System.out.println("That user is out of your connection range, unable to send request");
+			   return; 
+		   }
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static void PrintMessages(List<List<String>> msgList){
+	   try{
+		   String Headder1 = String.format("%126s", "").replace(' ', '-');
+		   
+		   for(int i = 0; i < msgList.size(); i++){
+			   System.out.println(Headder1);
+			   String formattedLine = String.format("| %-15s | %-105s", "Message ID", msgList.get(i).get(0)) + "|";
+			   System.out.println(formattedLine);
+			   formattedLine = String.format("| %-15s | %-105s", "Sender", msgList.get(i).get(1)) + "|";
+			   System.out.println(formattedLine);
+			   formattedLine = String.format("| %-15s | %-105s", "Receiver", msgList.get(i).get(2)) + "|";
+			   System.out.println(formattedLine);
+			   formattedLine = String.format("| %-15s | %-105s", "Time Stamp", msgList.get(i).get(4)) + "|";
+			   System.out.println(formattedLine);
+			   formattedLine = String.format("| %-15s | %-105s", "Status", msgList.get(i).get(5)) + "|";
+			   System.out.println(formattedLine);
+			   
+			   System.out.println(Headder1);
+			   String msg = msgList.get(i).get(3).trim();
+
+			   int jOld = 0;
+			   int j = 0;
+			   while (j + 90 < msg.length() && (j = msg.lastIndexOf(" ", j + 90)) != -1) {
+			       formattedLine = String.format("| %-123s", msg.substring(jOld,j)) + "|";
+				   System.out.println(formattedLine);
+				   jOld = j;
+			       
+			   }
+			   if(j < msg.length()){
+			       formattedLine = String.format("| %-123s", msg.substring(j)) + "|";
+				   System.out.println(formattedLine);
+			   }
+			   System.out.println(Headder1);
+			   System.out.println("");
+		   } 
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }	   
+   }
+   
+   
+   public static void ViewMessages(ProfNetwork esql, String authorisedUser){
+	   try{
+		   String query = String.format(
+				   "SELECT M.msgId, M.senderId, M.receiverId, M.contents, M. sendTime, M.status "
+				   + "FROM MESSAGE M "
+				   + "WHERE M.senderId = '%s' AND deleteStatus != 1 AND deleteStatus < 3 "
+				   + "UNION "
+				   + "SELECT M.msgId, M.senderId, M.receiverId, M.contents, M. sendTime, M.status "
+				   + "FROM MESSAGE M "
+				   + "WHERE M.receiverId = '%s' AND deleteStatus < 2 ", authorisedUser, authorisedUser);
+		   List<List<String>> msgList = esql.executeQueryAndReturnResult(query);
+		   PrintMessages(msgList);
+		   //Update received message status to show receiving
+		   query = String.format(
+					"UPDATE MESSAGE "
+					+ "SET status = 'Delivered' "
+					+ "WHERE receiverId = '%s' AND status = 'sent'", authorisedUser);
+		   esql.executeUpdate(query);
+		   String input = "";
+		   boolean usermenu = true;
+		   while(usermenu) {
+		         System.out.println("View Messages");
+		         System.out.println("---------");
+		         System.out.println("1. Delete A Message");
+		         System.out.println(".........................");
+		         System.out.println("9. Main Menu");
+		         String request = "";
+		         switch (readChoice()){
+		            case 1: 
+		            	System.out.print("Enter the Message ID of the message you want to delete: ");
+		            	input = in.readLine();
+		            	query = String.format(
+		            			"UPDATE MESSAGE "
+		            			+ "SET deleteStatus = deleteStatus + 1 "
+		            			+ "WHERE senderId = '%s' AND msgId = '%s'", authorisedUser, input);
+		            	esql.executeUpdate(query);
+		            	query = String.format(
+		            			"UPDATE MESSAGE "
+		            			+ "SET deleteStatus = deleteStatus + 2 "
+		            			+ "WHERE receiverId = '%s' AND msgId = '%s'", authorisedUser, input);
+		            	esql.executeUpdate(query);
+		            	System.out.println("Message Deleted");
+		            	return;
+		            case 9: usermenu = false; break;
+		            default : System.out.println("Unrecognized choice!"); break;
+		         }
+		       }
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static void PrintWorkExp(List<List<String>> WorkList){
+	   try{
+		   String Headder1 = String.format("%126s", "").replace(' ', '-');
+		   String Headder2 = String.format("| %-123s", "Work Experience") + "|";
+		   System.out.println(Headder1);
+		   System.out.println(Headder2);
+		   System.out.println(Headder1);
+		   
+		   String titleLine = String.format("| %-20s | %-40s | %-30s | %-10s | %-10s |",
+				   "Company Name",
+				   "Role",
+				   "Location",
+				   "Start Date",
+				   "End Date");
+
+		   System.out.println(titleLine);
+		   System.out.println(Headder1);
+		   
+		   for(int i = 0; i < WorkList.size(); i++){
+			   String formattedLine = String.format("| %-20s | %-40s | %-30s | %s | %s |",
+					   WorkList.get(i).get(0).trim(),
+					   WorkList.get(i).get(1).trim(),
+					   WorkList.get(i).get(2).trim(),
+					   WorkList.get(i).get(3).trim(),
+					   WorkList.get(i).get(4).trim());
+
+			   System.out.println(formattedLine);
+		   }
+		   System.out.println(Headder1);
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+		   
+   }
+   
+   public static void PrintEduDet(List<List<String>> EduList){
+	   try{
+		   String Headder1 = String.format("%126s", "").replace(' ', '-');
+		   String Headder2 = String.format("| %-123s", "Educational Details") + "|";
+		   System.out.println(Headder1);
+		   System.out.println(Headder2);
+		   System.out.println(Headder1);
+		   
+		   String titleLine = String.format("| %-20s | %-40s | %-30s | %-10s | %-10s |",
+				   "Institution Name",
+				   "Major",
+				   "Degree",
+				   "Start Date",
+				   "End Date");
+
+		   System.out.println(titleLine);
+		   System.out.println(Headder1);
+		   
+		   for(int i = 0; i < EduList.size(); i++){
+			   String formattedLine = String.format("| %-20s | %-40s | %-30s | %s | %s |",
+					   EduList.get(i).get(0).trim(),
+					   EduList.get(i).get(1).trim(),
+					   EduList.get(i).get(2).trim(),
+					   EduList.get(i).get(3).trim(),
+					   EduList.get(i).get(4).trim());
+
+			   System.out.println(formattedLine);
+		   }
+		   System.out.println(Headder1);
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }	   
+   }
+   
+   public static void PrintUser(List<List<String>> UserList, boolean isFriend, boolean everything){
+	   try{
+		   String Headder1 = String.format("%126s", "").replace(' ', '-');
+		   System.out.println(Headder1);
+		   
+		   for(int i = 0; i < UserList.size(); i++){
+			   String formattedLine = String.format("| %-15s | %-105s", "Username", UserList.get(i).get(0)) + "|";
+			   System.out.println(formattedLine);
+			   if(everything){
+				   formattedLine = String.format("| %-15s | %-105s", "email", UserList.get(i).get(1)) + "|";
+				   System.out.println(formattedLine);
+			   }
+			   formattedLine = String.format("| %-15s | %-105s", "Name", UserList.get(i).get(2)) + "|";
+			   System.out.println(formattedLine);
+			   if(isFriend || everything){
+				   formattedLine = String.format("| %-15s | %-105s", "Date of Birth", UserList.get(i).get(3)) + "|";
+				   System.out.println(formattedLine);
+			   }
+			   System.out.println(Headder1);
+		   }
+
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }	
+   }
+   
+   public static String SearchPeople(ProfNetwork esql, String authorisedUser, String target){
+	   try{
+		   System.out.println("Search People");
+		   System.out.println("---------");
+		   String username = target;
+		   if(username == null){
+			   System.out.print("Enter a Username: ");
+			   username = in.readLine();
+		   }
+		   
+	       String query = String.format("SELECT userId, email, name, dateOfBirth FROM USR WHERE userId = '%s'", username);
+	       List<List<String>> Users = esql.executeQueryAndReturnResult(query);
+	       if (!Users.isEmpty()){
+	    	   PrintUser(Users, false, false);
+	    	   query = String.format("SELECT company, role, location, startDate, endDate "
+	    	   		+ "FROM WORK_EXPR WHERE userId = '%s'", username);
+	    	   List<List<String>> WorkList = esql.executeQueryAndReturnResult(query);
+	    	   PrintWorkExp(WorkList);
+	    	   query = String.format("SELECT instituitionName, major, degree, startDate, endDate "
+	    	   		+ "FROM EDUCATIONAL_DETAILS WHERE userId = '%s'", username);
+	    	   List<List<String>> EduList= esql.executeQueryAndReturnResult(query);
+	    	   PrintEduDet(EduList);
+	    	   
+			   boolean usermenu = true;
+		       while(usermenu) {
+		         System.out.println("Viewing Profile");
+		         System.out.println("---------");
+		         System.out.println("1. Send Friend Request");
+		         System.out.println("2. Send Message");
+		         if(target != null)
+		        	 System.out.println("3. View Friends");
+		         System.out.println(".........................");
+		         System.out.println("9. Main Menu");
+		         switch (readChoice()){
+		            case 1: SendRequest(esql, authorisedUser, username); return username;
+		            case 2: NewMessage(esql,authorisedUser, username); return username;
+		            case 3:
+		            	if(target != null){
+		            		String viewRet = ViewFriends(esql, target);
+			            	if(viewRet == null){
+			            		System.out.println("Invalid User");
+			            		break;
+			            	}
+		            		return username;
+		            	}
+		            	else
+		            		System.out.println("Unrecognized choice!");
+		            	break;
+		            case 9: usermenu = false; break;
+		            default : System.out.println("Unrecognized choice!"); break;
+		         }
+		       }
+	    	   return username;
+	       }
+	       else{
+	    	   System.out.println("User Not Found");
+	    	   return null;
+	       }
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return null;
+	   }
+   }
+   
+   public static void ChangePassword(ProfNetwork esql, String authorisedUser){
+	   try{
+		   System.out.println("---------");
+		   System.out.print("\tEnter New Password: ");
+		   String newpass = in.readLine();
+		   System.out.print("\tEnter your current password: ");
+		   String oldpass = in.readLine();
+	       String query = String.format("\tSELECT * FROM USR WHERE userId = '%s' AND password = '%s'", authorisedUser, oldpass);
+	       int userNum = esql.executeQuery(query);
+	       if (userNum > 0){
+	    	   query = String.format("UPDATE USR SET password = '%s' WHERE userId = '%s' AND password = '%s'", newpass, authorisedUser, oldpass);
+	    	   esql.executeUpdate(query);
+	    	   System.out.println("\tPassword Successfully Changed");
+	    	   return;
+	       }
+	       else{
+	    	   System.out.println("Incorrect Password. Returning to main menu.");
+	    	   return;
+	       }
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static void AddEdu(ProfNetwork esql, String authorisedUser){
+	   try{
+		   System.out.println("---------");
+		   System.out.print("\tEnter institution name: ");
+		   String company = in.readLine();
+		   System.out.print("\tEnter major: ");
+		   String role = in.readLine();
+		   System.out.print("\tEnter degree: ");
+		   String location = in.readLine();
+		   System.out.print("\tEnter start date (YYYY/MM/DD): ");
+		   String startDate = in.readLine();
+		   System.out.print("\tEnter end date (YYYY/MM/DD): ");
+		   String endDate = in.readLine();
+		   
+		   String query = String.format("INSERT INTO EDUCATIONAL_DETAILS (userId, instituitionName, major, degree, startDate, endDate)"
+		   		+ " VALUES ('%s','%s','%s','%s','%s','%s')",authorisedUser, company, role, location, startDate, endDate);
+		   esql.executeUpdate(query);
+		   System.out.println("\tWork Experience Added");
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
+   
+   public static void AddWork(ProfNetwork esql, String authorisedUser){
+	   try{
+		   System.out.println("---------");
+		   System.out.print("\tEnter company name: ");
+		   String instName = in.readLine();
+		   System.out.print("\tEnter role: ");
+		   String major = in.readLine();
+		   System.out.print("\tEnter location: ");
+		   String degree = in.readLine();
+		   System.out.print("\tEnter start date (YYYY-MM-DD): ");
+		   String startDate = in.readLine();
+		   System.out.print("\tEnter end date (YYYY-MM-DD): ");
+		   String endDate = in.readLine();
+		   
+		   String query = String.format("INSERT INTO WORK_EXPR (userId, company, role, location, startDate, endDate)"
+		   		+ " VALUES ('%s','%s','%s','%s','%s','%s')", authorisedUser, instName, major, degree, startDate, endDate);
+		   esql.executeUpdate(query);
+		   System.out.println("\tEducational Detail Added");
+		   return;
+	   }catch(Exception e){
+	         System.err.println (e.getMessage ());
+	         return;
+	   }
+   }
 }//end ProfNetwork
